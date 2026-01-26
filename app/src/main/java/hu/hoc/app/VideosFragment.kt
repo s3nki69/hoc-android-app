@@ -100,7 +100,6 @@ class VideosFragment : Fragment() {
         showLoading()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // A WordPress API-n keresztül kérjük le a videókat
                 val url = "https://www.hoc.hu/wp-json/wp/v2/posts?per_page=30&_embed"
                 val response = URL(url).readText()
                 val jsonArray = JSONArray(response)
