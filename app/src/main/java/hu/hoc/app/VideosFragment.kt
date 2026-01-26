@@ -41,6 +41,9 @@ class VideosFragment : Fragment() {
     private val filteredVideos = mutableListOf<Video>()
     private lateinit var adapter: VideosAdapter
     
+    // Fix csatorna URL
+    private val CHANNEL_URL = "https://www.youtube.com/@HOCTvChannel"
+    
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -111,55 +114,33 @@ class VideosFragment : Fragment() {
         
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val channelUrl = "https://www.youtube.com/@HOCTvChannel/videos"
-                val document = Jsoup.connect(channelUrl)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                    .timeout(15000)
+                // YouTube scraping kísérlet
+                val document = Jsoup.connect("$CHANNEL_URL/videos")
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                     .get()
                 
                 val loadedVideos = mutableListOf<Video>()
                 val scriptElements = document.select("script")
                 
                 for (script in scriptElements) {
-                    val scriptContent = script.html()
-                    if (scriptContent.contains("\"videoId\"")) {
+                    val content = script.html()
+                    if (content.contains("\"videoId\"")) {
                         val videoIdPattern = "\"videoId\":\"([^\"]+)\"".toRegex()
                         val titlePattern = "\"title\":\\{\"runs\":\\[\\{\"text\":\"([^\"]+)\"".toRegex()
                         
-                        val videoIds = videoIdPattern.findAll(scriptContent).map { it.groupValues[1] }.toList()
-                        val titles = titlePattern.findAll(scriptContent).map { it.groupValues[1] }.toList()
+                        val ids = videoIdPattern.findAll(content).map { it.groupValues[1] }.toList()
+                        val titles = titlePattern.findAll(content).map { it.groupValues[1] }.toList()
                         
-                        for (i in 0 until minOf(videoIds.size, titles.size, 30)) {
-                            val videoId = videoIds[i]
-                            val title = titles[i]
-                            
-                            loadedVideos.add(
-                                Video(
-                                    id = videoId,
-                                    title = title,
-                                    thumbnail = "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
-                                    duration = "",
-                                    views = "",
-                                    publishedAt = ""
-                                )
-                            )
+                        for (i in 0 until minOf(ids.size, titles.size, 15)) {
+                            loadedVideos.add(Video(ids[i], titles[i], "https://i.ytimg.com/vi/${ids[i]}/hqdefault.jpg", "", "", ""))
                         }
                         if (loadedVideos.isNotEmpty()) break
                     }
                 }
                 
-                // Ha nem sikerült videókat találni (pl. YouTube blokkolás), adjunk hozzá egy fix gombot
+                // Ha nem sikerült adatot kinyerni, egy gombot mindenképp adunk
                 if (loadedVideos.isEmpty()) {
-                    loadedVideos.add(
-                        Video(
-                            id = "channel",
-                            title = "HOC TV Channel megnyitása a YouTube-on",
-                            thumbnail = "",
-                            duration = "",
-                            views = "",
-                            publishedAt = ""
-                        )
-                    )
+                    loadedVideos.add(Video("channel", "HOC TV Channel megnyitása", "", "", "", ""))
                 }
                 
                 withContext(Dispatchers.Main) {
@@ -172,16 +153,7 @@ class VideosFragment : Fragment() {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     videos.clear()
-                    videos.add(
-                        Video(
-                            id = "channel",
-                            title = "HOC TV Channel - Kattints a megnyitáshoz!",
-                            thumbnail = "",
-                            duration = "",
-                            views = "",
-                            publishedAt = ""
-                        )
-                    )
+                    videos.add(Video("channel", "HOC TV Channel - Kattints ide a megnyitáshoz!", "", "", "", ""))
                     filterVideos("")
                     showContent()
                 }
@@ -190,12 +162,7 @@ class VideosFragment : Fragment() {
     }
     
     private fun openVideo(video: Video) {
-        val url = if (video.id == "channel") {
-            "https://www.youtube.com/@HOCTvChannel"
-        } else {
-            "https://www.youtube.com/watch?v=${video.id}"
-        }
-        
+        val url = if (video.id == "channel") CHANNEL_URL else "https://www.youtube.com/watch?v=${video.id}"
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         startActivity(intent)
     }
