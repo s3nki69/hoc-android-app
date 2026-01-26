@@ -21,7 +21,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.net.URL
 
-data class Video(val id: String, val title: String, val thumbnail: String, val link: String)
+// EZ IS HIÁNYZOTT:
+data class Video(
+    val id: String,
+    val title: String,
+    val thumbnail: String,
+    val link: String
+)
 
 class VideosFragment : Fragment() {
     private lateinit var recyclerView: RecyclerView
@@ -29,12 +35,14 @@ class VideosFragment : Fragment() {
     private lateinit var progressBar: ProgressBar
     private lateinit var errorText: TextView
     private lateinit var searchView: SearchView
+    
     private val videos = mutableListOf<Video>()
     private val filteredVideos = mutableListOf<Video>()
     private lateinit var adapter: VideosAdapter
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? = 
-        inflater.inflate(R.layout.fragment_videos, container, false)
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+        return inflater.inflate(R.layout.fragment_videos, container, false)
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -43,6 +51,7 @@ class VideosFragment : Fragment() {
         progressBar = view.findViewById(R.id.progressBar)
         errorText = view.findViewById(R.id.errorText)
         searchView = view.findViewById(R.id.searchView)
+        
         setupRecyclerView()
         setupSearch()
         setupSwipeRefresh()
@@ -50,7 +59,9 @@ class VideosFragment : Fragment() {
     }
 
     private fun setupRecyclerView() {
-        adapter = VideosAdapter(filteredVideos) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it.link))) }
+        adapter = VideosAdapter(filteredVideos) { video ->
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(video.link)))
+        }
         recyclerView.layoutManager = LinearLayoutManager(context)
         recyclerView.adapter = adapter
     }
@@ -58,16 +69,24 @@ class VideosFragment : Fragment() {
     private fun setupSearch() {
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(p0: String?): Boolean = false
-            override fun onQueryTextChange(query: String?): Boolean { filterVideos(query ?: ""); return true }
+            override fun onQueryTextChange(query: String?): Boolean {
+                filterVideos(query ?: "")
+                return true
+            }
         })
     }
 
-    private fun setupSwipeRefresh() { swipeRefresh.setOnRefreshListener { loadVideos() } }
+    private fun setupSwipeRefresh() {
+        swipeRefresh.setOnRefreshListener { loadVideos() }
+    }
 
     private fun filterVideos(query: String) {
         filteredVideos.clear()
-        if (query.isEmpty()) filteredVideos.addAll(videos)
-        else filteredVideos.addAll(videos.filter { it.title.contains(query, ignoreCase = true) })
+        if (query.isEmpty()) {
+            filteredVideos.addAll(videos)
+        } else {
+            filteredVideos.addAll(videos.filter { it.title.contains(query, ignoreCase = true) })
+        }
         adapter.notifyDataSetChanged()
     }
 
@@ -75,31 +94,54 @@ class VideosFragment : Fragment() {
         showLoading()
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // WordPress API-ból szedjük a videókat
                 val url = "https://www.hoc.hu/wp-json/wp/v2/posts?per_page=30&_embed"
                 val response = URL(url).readText()
                 val jsonArray = JSONArray(response)
                 val loaded = mutableListOf<Video>()
+
                 for (i in 0 until jsonArray.length()) {
                     val post = jsonArray.getJSONObject(i)
                     val title = Html.fromHtml(post.getJSONObject("title").getString("rendered"), Html.FROM_HTML_MODE_LEGACY).toString()
                     var thumb = ""
+                    
                     if (post.has("_embedded")) {
-                        val media = post.getJSONObject("_embedded").optJSONArray("wp:featuredmedia")?.optJSONObject(0)
-                        thumb = media?.optString("source_url") ?: ""
+                        val embedded = post.getJSONObject("_embedded")
+                        if (embedded.has("wp:featuredmedia")) {
+                            val mediaArray = embedded.optJSONArray("wp:featuredmedia")
+                            if (mediaArray != null && mediaArray.length() > 0) {
+                                thumb = mediaArray.getJSONObject(0).optString("source_url") ?: ""
+                            }
+                        }
                     }
-                    if (thumb.isNotEmpty()) loaded.add(Video(post.getInt("id").toString(), title, thumb, post.getString("link")))
+                    
+                    if (thumb.isNotEmpty()) {
+                        loaded.add(Video(
+                            id = post.getInt("id").toString(),
+                            title = title,
+                            thumbnail = thumb,
+                            link = post.getString("link")
+                        ))
+                    }
                 }
                 withContext(Dispatchers.Main) {
-                    videos.clear(); videos.addAll(loaded); filterVideos(searchView.query.toString()); showContent()
+                    videos.clear()
+                    videos.addAll(loaded)
+                    filterVideos(searchView.query.toString())
+                    showContent()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    videos.clear(); videos.add(Video("1", "HOC TV Megnyitása", "", "https://www.youtube.com/@HOCTvChannel")); filterVideos(""); showContent()
+                    // Hiba esetén fallback
+                    videos.clear()
+                    videos.add(Video("1", "HOC TV Megnyitása", "", "https://www.youtube.com/@HOCTvChannel"))
+                    filterVideos("")
+                    showContent()
                 }
             }
         }
     }
-
+    
     private fun showLoading() { progressBar.visibility = View.VISIBLE; recyclerView.visibility = View.GONE; errorText.visibility = View.GONE; swipeRefresh.isRefreshing = false }
     private fun showContent() { progressBar.visibility = View.GONE; recyclerView.visibility = View.VISIBLE; errorText.visibility = View.GONE; swipeRefresh.isRefreshing = false }
 }
