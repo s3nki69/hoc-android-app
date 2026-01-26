@@ -21,8 +21,7 @@ class ArticlesAdapter(
     }
     
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ArticleViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_article, parent, false)
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_article, parent, false)
         return ArticleViewHolder(view)
     }
     
@@ -33,7 +32,7 @@ class ArticlesAdapter(
         holder.excerpt.text = article.excerpt
         holder.date.text = article.date
         
-        if (article.imageUrl != null) {
+        if (!article.imageUrl.isNullOrEmpty()) {
             holder.image.load(article.imageUrl) {
                 crossfade(true)
                 placeholder(R.drawable.ic_placeholder)
@@ -44,9 +43,7 @@ class ArticlesAdapter(
             holder.image.visibility = View.GONE
         }
         
-        holder.itemView.setOnClickListener {
-            onItemClick(article)
-        }
+        holder.itemView.setOnClickListener { onItemClick(article) }
     }
     
     override fun getItemCount() = articles.size
