@@ -13,7 +13,7 @@ import android.widget.ProgressBar
 import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 
-// Ezt itt hagyjuk a build stabilitása miatt, bár a WebView-hoz nem kell
+// Adatmodell megtartása a kompatibilitás miatt
 data class Coupon(
     val title: String,
     val store: String,
@@ -43,40 +43,48 @@ class CouponsFragment : Fragment() {
 
         setupWebView()
 
-        // Kezeljük a "Vissza" gombot: ha böngészel a kuponok közt, 
-        // a vissza gomb az előző oldalra visz, nem lép ki az appból.
+        // Vissza gomb kezelése: ha már böngészel, ne lépjen ki, hanem menjen vissza
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (webView.canGoBack()) {
                     webView.goBack()
                 } else {
+                    // Ha a helyi kezdőlapon vagyunk és vissza nyomunk, akkor engedjük át a vezérlést (kilépés/főmenü)
                     isEnabled = false
                     requireActivity().onBackPressed()
                 }
             }
         })
 
-        // Betöltjük a kuponkereső nyitólapját
-        webView.loadUrl("https://kupon.hoc.hu/")
+        // ITT A VÁLTOZÁS: Nem az internetes URL-t töltjük be, hanem a helyi fájlt
+        // Ez azonnal meg fog jelenni internetkapcsolat nélkül is
+        webView.loadUrl("file:///android_asset/coupon_landing.html")
     }
 
     private fun setupWebView() {
         val webSettings: WebSettings = webView.settings
-        webSettings.javaScriptEnabled = true // Fontos a Laravel kereső miatt
+        webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
         webSettings.loadWithOverviewMode = true
         webSettings.useWideViewPort = true
         webSettings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        
+        // Gyorsítótár bekapcsolása a későbbi betöltésekhez
+        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                // Minden linket az appon belül nyitunk meg
+                // False-t adunk vissza, így minden linket (és a keresés eredményét) 
+                // a WebView-n belül nyit meg, nem dob ki a Chrome-ba.
                 return false
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
-                progressBar.visibility = View.VISIBLE
+                // Csak akkor mutatunk töltést, ha nem a helyi fájlt töltjük
+                if (url != null && !url.contains("file:///android_asset")) {
+                    progressBar.visibility = View.VISIBLE
+                }
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
