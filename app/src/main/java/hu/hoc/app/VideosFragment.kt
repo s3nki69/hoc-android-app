@@ -113,18 +113,16 @@ class VideosFragment : Fragment() {
             try {
                 val channelUrl = "https://www.youtube.com/@HOCTvChannel/videos"
                 val document = Jsoup.connect(channelUrl)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .timeout(15000)
                     .get()
                 
                 val loadedVideos = mutableListOf<Video>()
-                
-                // Próbáljuk kinyerni a videó adatokat a HTML-ből
                 val scriptElements = document.select("script")
                 
                 for (script in scriptElements) {
                     val scriptContent = script.html()
                     if (scriptContent.contains("\"videoId\"")) {
-                        // Keressük ki a videó ID-ket a script tartalmából
                         val videoIdPattern = "\"videoId\":\"([^\"]+)\"".toRegex()
                         val titlePattern = "\"title\":\\{\"runs\":\\[\\{\"text\":\"([^\"]+)\"".toRegex()
                         
@@ -146,17 +144,16 @@ class VideosFragment : Fragment() {
                                 )
                             )
                         }
-                        
                         if (loadedVideos.isNotEmpty()) break
                     }
                 }
                 
-                // Ha nem sikerült videókat találni, adjunk hozzá egy mintát
+                // Ha nem sikerült videókat találni (pl. YouTube blokkolás), adjunk hozzá egy fix gombot
                 if (loadedVideos.isEmpty()) {
                     loadedVideos.add(
                         Video(
-                            id = "sample",
-                            title = "HOC TV Channel - Nézd meg a csatornán a videókat!",
+                            id = "channel",
+                            title = "HOC TV Channel megnyitása a YouTube-on",
                             thumbnail = "",
                             duration = "",
                             views = "",
@@ -174,7 +171,6 @@ class VideosFragment : Fragment() {
                 
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    // Ha nem sikerül betölteni, adjunk egy linket a csatornához
                     videos.clear()
                     videos.add(
                         Video(
@@ -194,7 +190,7 @@ class VideosFragment : Fragment() {
     }
     
     private fun openVideo(video: Video) {
-        val url = if (video.id == "channel" || video.id == "sample") {
+        val url = if (video.id == "channel") {
             "https://www.youtube.com/@HOCTvChannel"
         } else {
             "https://www.youtube.com/watch?v=${video.id}"
@@ -216,14 +212,5 @@ class VideosFragment : Fragment() {
         recyclerView.visibility = View.VISIBLE
         errorText.visibility = View.GONE
         swipeRefresh.isRefreshing = false
-    }
-    
-    private fun showError(message: String) {
-        progressBar.visibility = View.GONE
-        recyclerView.visibility = View.GONE
-        errorText.visibility = View.VISIBLE
-        errorText.text = "Hiba: $message"
-        swipeRefresh.isRefreshing = false
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 }
