@@ -37,21 +37,13 @@ class VideosAdapter(
                 placeholder(R.drawable.ic_placeholder)
                 error(R.drawable.ic_placeholder)
             }
+        } else {
+            holder.thumbnail.setImageResource(R.drawable.ic_placeholder)
         }
         
-        if (video.duration.isNotEmpty()) {
-            holder.duration.text = video.duration
-            holder.duration.visibility = View.VISIBLE
-        } else {
-            holder.duration.visibility = View.GONE
-        }
-        
-        if (video.views.isNotEmpty()) {
-            holder.views.text = video.views
-            holder.views.visibility = View.VISIBLE
-        } else {
-            holder.views.visibility = View.GONE
-        }
+        // Ezek a mezők nincsenek az új modellben, elrejtjük őket
+        holder.duration.visibility = View.GONE
+        holder.views.visibility = View.GONE
         
         holder.itemView.setOnClickListener {
             onItemClick(video)
