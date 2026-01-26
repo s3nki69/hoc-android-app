@@ -19,6 +19,7 @@ class TikTokFragment : Fragment() {
     private lateinit var progressBar: ProgressBar
 
     // A TikTok profilod címe
+    // plusz egy sor csak úgy
     private val TIKTOK_URL = "https://www.tiktok.com/@hoc.hu"
 
     override fun onCreateView(
