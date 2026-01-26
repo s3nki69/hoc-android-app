@@ -19,7 +19,6 @@ class TikTokFragment : Fragment() {
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
 
-    // A TikTok profilod címe
     private val TIKTOK_URL = "https://www.tiktok.com/@hoc.hu"
 
     override fun onCreateView(
@@ -55,20 +54,19 @@ class TikTokFragment : Fragment() {
     private fun setupWebView() {
         val webSettings: WebSettings = webView.settings
         
-        // Alapbeállítások
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
+        
+        // JAVÍTÁS: Jobb illeszkedés a képernyőhöz
         webSettings.loadWithOverviewMode = true
         webSettings.useWideViewPort = true
-        
-        // Fontos: TikTok-hoz kell a hardveres gyorsítás és a vegyes tartalom engedélyezése
-        webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+        webSettings.setSupportZoom(true)
+        webSettings.builtInZoomControls = true
+        webSettings.displayZoomControls = false
 
-        // Böngésző álcázása (hogy ne butított verziót kapjunk)
+        webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         webSettings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
-        // --- SÜTIK (COOKIES) ENGEDÉLYEZÉSE ---
-        // Ez oldja meg a GDPR ablak problémáját
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
@@ -87,12 +85,25 @@ class TikTokFragment : Fragment() {
                 super.onPageFinished(view, url)
                 progressBar.visibility = View.GONE
                 
-                // Extra trükk: Megpróbáljuk elrejteni a bannereket, ha mégis maradnának
-                // (Opcionális, de segíthet tisztítani a képet)
+                // JAVÍTÁS: Drasztikusabb GDPR banner eltávolítás
+                // Ez a szkript megkeresi a gyakori TikTok banner elemeket és elrejti őket
                 webView.evaluateJavascript(
-                    "javascript:(function() { " +
-                            "document.getElementsByClassName('tiktok-cookie-banner')[0].style.display='none';" +
-                            "})()", 
+                    """
+                    (function() {
+                        var css = 'div[class*="cookie-banner"], div[class*="CookieBanner"], #tiktok-cookie-banner { display: none !important; }';
+                        var head = document.head || document.getElementsByTagName('head')[0];
+                        var style = document.createElement('style');
+                        style.type = 'text/css';
+                        style.appendChild(document.createTextNode(css));
+                        head.appendChild(style);
+                        
+                        // Azonnali kényszerített eltávolítás az ismert osztályokra
+                        var banners = document.querySelectorAll('div[class*="cookie-banner"], div[class*="CookieBanner"]');
+                        for (var i = 0; i < banners.length; i++) {
+                            banners[i].style.setProperty('display', 'none', 'important');
+                        }
+                    })()
+                    """.trimIndent(), 
                     null
                 )
             }
