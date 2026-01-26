@@ -3,6 +3,7 @@ package hu.hoc.app
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.Html
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -121,7 +122,11 @@ class ArticlesFragment : Fragment() {
                 
                 for (i in 0 until jsonArray.length()) {
                     val post = jsonArray.getJSONObject(i)
-                    val title = post.getJSONObject("title").getString("rendered")
+                    
+                    // Cím dekódolása (HTML entitások javítása)
+                    val rawTitle = post.getJSONObject("title").getString("rendered")
+                    val title = Html.fromHtml(rawTitle, Html.FROM_HTML_MODE_LEGACY).toString()
+                    
                     val excerpt = post.getJSONObject("excerpt").getString("rendered")
                         .replace("<[^>]*>".toRegex(), "")
                         .replace("&hellip;", "...")
@@ -136,12 +141,11 @@ class ArticlesFragment : Fragment() {
                             val media = embedded.getJSONArray("wp:featuredmedia")
                             if (media.length() > 0) {
                                 val mediaObj = media.getJSONObject(0)
+                                // Megpróbáljuk a teljes méretű képet kiszedni, függetlenül attól, hol van tárolva
                                 imageUrl = mediaObj.getString("source_url")
                             }
                         }
-                    } catch (e: Exception) {
-                        // Nincs kép
-                    }
+                    } catch (e: Exception) { }
                     
                     loadedArticles.add(
                         Article(
