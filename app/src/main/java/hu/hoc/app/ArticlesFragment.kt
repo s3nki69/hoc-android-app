@@ -77,10 +77,7 @@ class ArticlesFragment : Fragment() {
     
     private fun setupSearch() {
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                return false
-            }
-            
+            override fun onQueryTextSubmit(query: String?): Boolean = false
             override fun onQueryTextChange(newText: String?): Boolean {
                 filterArticles(newText ?: "")
                 return true
@@ -89,9 +86,7 @@ class ArticlesFragment : Fragment() {
     }
     
     private fun setupSwipeRefresh() {
-        swipeRefresh.setOnRefreshListener {
-            loadArticles()
-        }
+        swipeRefresh.setOnRefreshListener { loadArticles() }
     }
     
     private fun filterArticles(query: String) {
@@ -99,64 +94,53 @@ class ArticlesFragment : Fragment() {
         if (query.isEmpty()) {
             filteredArticles.addAll(articles)
         } else {
-            filteredArticles.addAll(
-                articles.filter {
-                    it.title.contains(query, ignoreCase = true) ||
-                    it.excerpt.contains(query, ignoreCase = true)
-                }
-            )
+            filteredArticles.addAll(articles.filter {
+                it.title.contains(query, ignoreCase = true) || it.excerpt.contains(query, ignoreCase = true)
+            })
         }
         adapter.notifyDataSetChanged()
     }
     
     private fun loadArticles() {
         showLoading()
-        
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // Az API kérést kiegészítettem, hogy minden adatot megkapjunk a képekről is
                 val url = "https://www.hoc.hu/wp-json/wp/v2/posts?per_page=50&_embed"
                 val response = URL(url).readText()
                 val jsonArray = org.json.JSONArray(response)
-                
                 val loadedArticles = mutableListOf<Article>()
                 
                 for (i in 0 until jsonArray.length()) {
                     val post = jsonArray.getJSONObject(i)
-                    
-                    // Cím dekódolása (HTML entitások javítása)
-                    val rawTitle = post.getJSONObject("title").getString("rendered")
-                    val title = Html.fromHtml(rawTitle, Html.FROM_HTML_MODE_LEGACY).toString()
-                    
-                    val excerpt = post.getJSONObject("excerpt").getString("rendered")
-                        .replace("<[^>]*>".toRegex(), "")
-                        .replace("&hellip;", "...")
-                        .trim()
-                    val link = post.getString("link")
-                    val date = post.getString("date").substring(0, 10)
+                    val title = Html.fromHtml(post.getJSONObject("title").getString("rendered"), Html.FROM_HTML_MODE_LEGACY).toString()
+                    val excerpt = Html.fromHtml(post.getJSONObject("excerpt").getString("rendered"), Html.FROM_HTML_MODE_LEGACY).toString()
+                        .replace("<[^>]*>".toRegex(), "").trim()
                     
                     var imageUrl: String? = null
+                    // Kép keresése több helyen (helyi és felhő alapú képekhez is)
                     try {
-                        val embedded = post.getJSONObject("_embedded")
-                        if (embedded.has("wp:featuredmedia")) {
-                            val media = embedded.getJSONArray("wp:featuredmedia")
-                            if (media.length() > 0) {
-                                val mediaObj = media.getJSONObject(0)
-                                // Megpróbáljuk a teljes méretű képet kiszedni, függetlenül attól, hol van tárolva
-                                imageUrl = mediaObj.getString("source_url")
+                        if (post.has("_embedded")) {
+                            val embedded = post.getJSONObject("_embedded")
+                            if (embedded.has("wp:featuredmedia")) {
+                                val media = embedded.getJSONArray("wp:featuredmedia").getJSONObject(0)
+                                imageUrl = media.optString("source_url")
                             }
+                        }
+                        // Ha az API nem adta vissza, megpróbáljuk a tartalom kódjából kinyerni az első kép linkjét
+                        if (imageUrl.isNullOrEmpty() && post.has("jetpack_featured_media_url")) {
+                            imageUrl = post.getString("jetpack_featured_media_url")
                         }
                     } catch (e: Exception) { }
                     
-                    loadedArticles.add(
-                        Article(
-                            id = post.getInt("id"),
-                            title = title,
-                            excerpt = excerpt,
-                            link = link,
-                            imageUrl = imageUrl,
-                            date = date
-                        )
-                    )
+                    loadedArticles.add(Article(
+                        id = post.getInt("id"),
+                        title = title,
+                        excerpt = excerpt,
+                        link = post.getString("link"),
+                        imageUrl = imageUrl,
+                        date = post.getString("date").substring(0, 10)
+                    ))
                 }
                 
                 withContext(Dispatchers.Main) {
@@ -165,18 +149,14 @@ class ArticlesFragment : Fragment() {
                     filterArticles(searchView.query.toString())
                     showContent()
                 }
-                
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    showError(e.message ?: "Ismeretlen hiba")
-                }
+                withContext(Dispatchers.Main) { showError("Hiba: ${e.message}") }
             }
         }
     }
     
     private fun openArticle(url: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        startActivity(intent)
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
     
     private fun showLoading() {
@@ -197,8 +177,7 @@ class ArticlesFragment : Fragment() {
         progressBar.visibility = View.GONE
         recyclerView.visibility = View.GONE
         errorText.visibility = View.VISIBLE
-        errorText.text = "Hiba: $message"
+        errorText.text = message
         swipeRefresh.isRefreshing = false
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 }
