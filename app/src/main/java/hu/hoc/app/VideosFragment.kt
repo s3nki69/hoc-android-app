@@ -1,160 +1,54 @@
-package hu.hoc.app
+dpackage hu.hoc.app
 
-import android.content.Intent
-import android.net.Uri
-import android.os.Bundle
-import android.text.Html
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ProgressBar
-import android.widget.SearchView
+import android.widget.ImageView
 import android.widget.TextView
-import android.widget.Toast
-import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import java.net.URL
+import coil.load
 
-data class Video(
-    val id: String,
-    val title: String,
-    val thumbnail: String,
-    val link: String
-)
-
-class VideosFragment : Fragment() {
+class VideosAdapter(
+    private val videos: List<Video>,
+    private val onItemClick: (Video) -> Unit
+) : RecyclerView.Adapter<VideosAdapter.VideoViewHolder>() {
     
-    private lateinit var recyclerView: RecyclerView
-    private lateinit var swipeRefresh: SwipeRefreshLayout
-    private lateinit var progressBar: ProgressBar
-    private lateinit var errorText: TextView
-    private lateinit var searchView: SearchView
+    class VideoViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val thumbnail: ImageView = view.findViewById(R.id.videoThumbnail)
+        val title: TextView = view.findViewById(R.id.videoTitle)
+        val duration: TextView = view.findViewById(R.id.videoDuration)
+        val views: TextView = view.findViewById(R.id.videoViews)
+    }
     
-    private val videos = mutableListOf<Video>()
-    private val filteredVideos = mutableListOf<Video>()
-    private lateinit var adapter: VideosAdapter
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_video, parent, false)
+        return VideoViewHolder(view)
+    }
     
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View? = inflater.inflate(R.layout.fragment_videos, container, false)
-    
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        recyclerView = view.findViewById(R.id.recyclerView)
-        swipeRefresh = view.findViewById(R.id.swipeRefresh)
-        progressBar = view.findViewById(R.id.progressBar)
-        errorText = view.findViewById(R.id.errorText)
-        searchView = view.findViewById(R.id.searchView)
+    override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
+        val video = videos[position]
         
-        setupRecyclerView()
-        setupSearch()
-        setupSwipeRefresh()
-        loadVideos()
-    }
-    
-    private fun setupRecyclerView() {
-        // Átalakított adapter hívás a videó linkekhez
-        adapter = VideosAdapter(filteredVideos) { video ->
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(video.link)))
-        }
-        recyclerView.layoutManager = LinearLayoutManager(context)
-        recyclerView.adapter = adapter
-    }
-    
-    private fun setupSearch() {
-        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(p0: String?): Boolean = false
-            override fun onQueryTextChange(query: String?): Boolean {
-                filterVideos(query ?: "")
-                return true
+        holder.title.text = video.title
+        
+        if (video.thumbnail.isNotEmpty()) {
+            holder.thumbnail.load(video.thumbnail) {
+                crossfade(true)
+                placeholder(R.drawable.ic_placeholder)
+                error(R.drawable.ic_placeholder)
             }
-        })
-    }
-    
-    private fun setupSwipeRefresh() {
-        swipeRefresh.setOnRefreshListener { loadVideos() }
-    }
-    
-    private fun filterVideos(query: String) {
-        filteredVideos.clear()
-        if (query.isEmpty()) {
-            filteredVideos.addAll(videos)
         } else {
-            filteredVideos.addAll(videos.filter { it.title.contains(query, ignoreCase = true) })
+            holder.thumbnail.setImageResource(R.drawable.ic_placeholder)
         }
-        adapter.notifyDataSetChanged()
-    }
-    
-    private fun loadVideos() {
-        showLoading()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                // A WordPress API-n keresztül kérjük le a videókat (ha van ilyen egyedi poszt típus vagy kategória)
-                // Itt a "videók" kategória vagy modul adatait hívjuk be
-                val url = "https://www.hoc.hu/wp-json/wp/v2/posts?categories=VIDEÓK_KATEGÓRIA_ID&_embed" 
-                // Megjegyzés: Ha tudod a videó kategória ID-ját, írd be a helyére. 
-                // Ha nem tudod, az API az összes posztot visszaadja, amiben videó van.
-                
-                val response = URL(url).readText()
-                val jsonArray = JSONArray(response)
-                val loaded = mutableListOf<Video>()
-                
-                for (i in 0 until jsonArray.length()) {
-                    val post = jsonArray.getJSONObject(i)
-                    val title = Html.fromHtml(post.getJSONObject("title").getString("rendered"), Html.FROM_HTML_MODE_LEGACY).toString()
-                    
-                    var thumb = ""
-                    if (post.has("_embedded")) {
-                        val media = post.getJSONObject("_embedded").optJSONArray("wp:featuredmedia")?.getJSONObject(0)
-                        thumb = media?.optString("source_url") ?: ""
-                    }
-                    
-                    loaded.add(Video(
-                        id = post.getInt("id").toString(),
-                        title = title,
-                        thumbnail = thumb,
-                        link = post.getString("link")
-                    ))
-                }
-                
-                withContext(Dispatchers.Main) {
-                    videos.clear()
-                    videos.addAll(loaded)
-                    filterVideos(searchView.query.toString())
-                    showContent()
-                }
-            } catch (e: Exception) {
-                // Ha az API hiba, visszaugrunk a csatorna linkre
-                withContext(Dispatchers.Main) {
-                    videos.clear()
-                    videos.add(Video("1", "HOC TV Csatorna megnyitása", "", "https://www.youtube.com/@HOCTvChannel"))
-                    filterVideos("")
-                    showContent()
-                }
-            }
+        
+        // Mivel ezek az adatok az új modellben nincsenek benne, elrejtjük a mezőket
+        holder.duration.visibility = View.GONE
+        holder.views.visibility = View.GONE
+        
+        holder.itemView.setOnClickListener {
+            onItemClick(video)
         }
     }
     
-    private fun showLoading() {
-        progressBar.visibility = View.VISIBLE
-        recyclerView.visibility = View.GONE
-        errorText.visibility = View.GONE
-        swipeRefresh.isRefreshing = false
-    }
-    
-    private fun showContent() {
-        progressBar.visibility = View.GONE
-        recyclerView.visibility = View.VISIBLE
-        errorText.visibility = View.GONE
-        swipeRefresh.isRefreshing = false
-    }
+    override fun getItemCount() = videos.size
 }
