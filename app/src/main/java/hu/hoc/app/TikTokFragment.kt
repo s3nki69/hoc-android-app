@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -19,7 +20,6 @@ class TikTokFragment : Fragment() {
     private lateinit var progressBar: ProgressBar
 
     // A TikTok profilod címe
-    // plusz egy sor csak úgy
     private val TIKTOK_URL = "https://www.tiktok.com/@hoc.hu"
 
     override fun onCreateView(
@@ -27,7 +27,6 @@ class TikTokFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        // Fontos: Itt a tiktok layoutot töltjük be
         return inflater.inflate(R.layout.fragment_tiktok, container, false)
     }
 
@@ -55,11 +54,24 @@ class TikTokFragment : Fragment() {
 
     private fun setupWebView() {
         val webSettings: WebSettings = webView.settings
+        
+        // Alapbeállítások
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        webSettings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        webSettings.loadWithOverviewMode = true
+        webSettings.useWideViewPort = true
         
-        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
+        // Fontos: TikTok-hoz kell a hardveres gyorsítás és a vegyes tartalom engedélyezése
+        webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+
+        // Böngésző álcázása (hogy ne butított verziót kapjunk)
+        webSettings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+        // --- SÜTIK (COOKIES) ENGEDÉLYEZÉSE ---
+        // Ez oldja meg a GDPR ablak problémáját
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        cookieManager.setAcceptThirdPartyCookies(webView, true)
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -74,6 +86,15 @@ class TikTokFragment : Fragment() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 progressBar.visibility = View.GONE
+                
+                // Extra trükk: Megpróbáljuk elrejteni a bannereket, ha mégis maradnának
+                // (Opcionális, de segíthet tisztítani a képet)
+                webView.evaluateJavascript(
+                    "javascript:(function() { " +
+                            "document.getElementsByClassName('tiktok-cookie-banner')[0].style.display='none';" +
+                            "})()", 
+                    null
+                )
             }
         }
     }
