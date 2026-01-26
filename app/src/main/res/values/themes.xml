@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.HOCApp" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/hoc_blue</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorAccent">@color/hoc_orange</item>
+        <item name="android:statusBarColor">@color/hoc_blue</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+    
+    <!-- Splash Screen Theme -->
+    <style name="Theme.HOCApp.Splash" parent="Theme.Material3.Light.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:statusBarColor">@color/hoc_blue</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
