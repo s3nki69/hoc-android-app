@@ -25,7 +25,9 @@ class VideosAdapter(
     
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
         val video = videos[position]
+        
         holder.title.text = video.title
+        
         if (video.thumbnail.isNotEmpty()) {
             holder.thumbnail.load(video.thumbnail) {
                 crossfade(true)
@@ -35,6 +37,7 @@ class VideosAdapter(
         } else {
             holder.thumbnail.setImageResource(R.drawable.ic_placeholder)
         }
+        
         holder.itemView.setOnClickListener { onItemClick(video) }
     }
     
