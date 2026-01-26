@@ -16,8 +16,7 @@ class VideosAdapter(
     class VideoViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val thumbnail: ImageView = view.findViewById(R.id.videoThumbnail)
         val title: TextView = view.findViewById(R.id.videoTitle)
-        val duration: TextView = view.findViewById(R.id.videoDuration)
-        val views: TextView = view.findViewById(R.id.videoViews)
+        // A hibás sorokat (duration, views) innen eltávolítottuk
     }
     
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
@@ -40,10 +39,6 @@ class VideosAdapter(
         } else {
             holder.thumbnail.setImageResource(R.drawable.ic_placeholder)
         }
-        
-        // Ezek a mezők nincsenek az új modellben, elrejtjük őket
-        holder.duration.visibility = View.GONE
-        holder.views.visibility = View.GONE
         
         holder.itemView.setOnClickListener {
             onItemClick(video)
