@@ -47,13 +47,10 @@ class CouponsFragment : Fragment() {
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
-        return inflater.inflate(R.layout.fragment_coupons, container, false)
-    }
+    ): View? = inflater.inflate(R.layout.fragment_coupons, container, false)
     
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        
         recyclerView = view.findViewById(R.id.recyclerView)
         swipeRefresh = view.findViewById(R.id.swipeRefresh)
         progressBar = view.findViewById(R.id.progressBar)
@@ -63,16 +60,11 @@ class CouponsFragment : Fragment() {
         setupRecyclerView()
         setupSearch()
         setupSwipeRefresh()
-        
         loadCoupons()
     }
     
     private fun setupRecyclerView() {
-        adapter = CouponsAdapter(
-            coupons = filteredCoupons,
-            onCopyClick = { coupon -> copyCouponCode(coupon) },
-            onStoreClick = { coupon -> openStore(coupon) }
-        )
+        adapter = CouponsAdapter(filteredCoupons, { copyCouponCode(it) }, { openStore(it) })
         recyclerView.layoutManager = LinearLayoutManager(context)
         recyclerView.adapter = adapter
     }
@@ -80,68 +72,40 @@ class CouponsFragment : Fragment() {
     private fun setupSearch() {
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
-                if (!query.isNullOrEmpty()) {
-                    searchCoupons(query)
-                }
+                if (!query.isNullOrEmpty()) searchCoupons(query)
                 return true
             }
-            
             override fun onQueryTextChange(newText: String?): Boolean {
-                if (newText.isNullOrEmpty()) {
-                    loadCoupons()
-                }
+                if (newText.isNullOrEmpty()) loadCoupons()
                 return true
             }
         })
     }
     
     private fun setupSwipeRefresh() {
-        swipeRefresh.setOnRefreshListener {
-            loadCoupons()
-        }
-    }
-    
-    private fun filterCoupons(query: String) {
-        filteredCoupons.clear()
-        if (query.isEmpty()) {
-            filteredCoupons.addAll(coupons)
-        } else {
-            filteredCoupons.addAll(
-                coupons.filter {
-                    it.title.contains(query, ignoreCase = true) ||
-                    it.store.contains(query, ignoreCase = true)
-                }
-            )
-        }
-        adapter.notifyDataSetChanged()
+        swipeRefresh.setOnRefreshListener { loadCoupons() }
     }
     
     private fun searchCoupons(query: String) {
         showLoading()
-        
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // Laravel kereső URL kezelése
-                val searchUrl = "https://kupon.hoc.hu/?search=${Uri.encode(query)}"
-                val document = Jsoup.connect(searchUrl)
+                // Közvetlen keresés a Laravel keresőjén keresztül
+                val document = Jsoup.connect("https://kupon.hoc.hu/")
+                    .data("search", query)
                     .userAgent("Mozilla/5.0")
                     .get()
-                
-                val loadedCoupons = parseCoupons(document)
-                
+                val loaded = parseCoupons(document)
                 withContext(Dispatchers.Main) {
                     coupons.clear()
-                    coupons.addAll(loadedCoupons)
-                    filterCoupons("")
+                    coupons.addAll(loaded)
+                    filteredCoupons.clear()
+                    filteredCoupons.addAll(loaded)
+                    adapter.notifyDataSetChanged()
                     showContent()
-                    if (loadedCoupons.isEmpty()) {
-                        Toast.makeText(context, "Nincs találat a kuponok között", Toast.LENGTH_SHORT).show()
-                    }
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    showError(e.message ?: "Hiba a keresés során")
-                }
+                withContext(Dispatchers.Main) { showError("Hiba: ${e.message}") }
             }
         }
     }
@@ -150,59 +114,44 @@ class CouponsFragment : Fragment() {
         showLoading()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val document = Jsoup.connect("https://kupon.hoc.hu")
-                    .userAgent("Mozilla/5.0")
-                    .get()
-                
-                val loadedCoupons = parseCoupons(document)
-                
+                val document = Jsoup.connect("https://kupon.hoc.hu/").userAgent("Mozilla/5.0").get()
+                val loaded = parseCoupons(document)
                 withContext(Dispatchers.Main) {
                     coupons.clear()
-                    coupons.addAll(loadedCoupons)
-                    filterCoupons("")
+                    coupons.addAll(loaded)
+                    filteredCoupons.clear()
+                    filteredCoupons.addAll(loaded)
+                    adapter.notifyDataSetChanged()
                     showContent()
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    showError(e.message ?: "Hiba a letöltéskor")
-                }
+                withContext(Dispatchers.Main) { showError("Hiba: ${e.message}") }
             }
         }
     }
 
-    private fun parseCoupons(document: org.jsoup.nodes.Document): List<Coupon> {
+    private fun parseCoupons(doc: org.jsoup.nodes.Document): List<Coupon> {
         val list = mutableListOf<Coupon>()
-        // Rugalmasabb elemkeresés a Laravel struktúrához
-        val items = document.select(".deal-item, .coupon-item, article, .product-card")
-        
-        items.forEach { item ->
-            try {
-                val title = item.select("h2, h3, .title").text()
-                val store = item.select(".store, .shop").text().ifEmpty { "Bolt" }
-                val code = item.select(".coupon-code, code").text().ifEmpty { "Nincs kód" }
-                val discount = item.select(".discount, .price").text().ifEmpty { "-" }
-                val link = item.select("a").first()?.attr("abs:href") ?: ""
-                
-                if (title.isNotEmpty()) {
-                    list.add(Coupon(title, store, code, discount, link))
-                }
-            } catch (e: Exception) { }
+        // Minden lehetséges Laravel/WordPress kupon elem kinyerése
+        doc.select(".coupon-item, .deal-item, article, .product-card").forEach { item ->
+            val title = item.select("h2, h3, .title").text()
+            val code = item.select(".code, .coupon-code, strong").text().ifEmpty { "Kód a weboldalon" }
+            val link = item.select("a").attr("abs:href")
+            if (title.isNotEmpty() && link.isNotEmpty()) {
+                list.add(Coupon(title, item.select(".store").text(), code, item.select(".discount").text(), link))
+            }
         }
         return list
     }
     
     private fun copyCouponCode(coupon: Coupon) {
-        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Coupon Code", coupon.code)
-        clipboard.setPrimaryClip(clip)
+        val cb = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cb.setPrimaryClip(ClipData.newPlainText("Coupon", coupon.code))
         Toast.makeText(context, "Kód másolva!", Toast.LENGTH_SHORT).show()
     }
     
     private fun openStore(coupon: Coupon) {
-        if (coupon.link.isNotEmpty()) {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(coupon.link))
-            startActivity(intent)
-        }
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(coupon.link)))
     }
     
     private fun showLoading() {
@@ -219,11 +168,11 @@ class CouponsFragment : Fragment() {
         swipeRefresh.isRefreshing = false
     }
     
-    private fun showError(message: String) {
+    private fun showError(msg: String) {
         progressBar.visibility = View.GONE
         recyclerView.visibility = View.GONE
         errorText.visibility = View.VISIBLE
-        errorText.text = "Hiba: $message"
+        errorText.text = msg
         swipeRefresh.isRefreshing = false
     }
 }
