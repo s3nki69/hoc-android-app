@@ -3,6 +3,7 @@ package hu.hoc.app
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.Html
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -18,15 +19,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.jsoup.Jsoup
+import org.json.JSONArray
+import java.net.URL
 
 data class Video(
     val id: String,
     val title: String,
     val thumbnail: String,
-    val duration: String,
-    val views: String,
-    val publishedAt: String
+    val link: String
 )
 
 class VideosFragment : Fragment() {
@@ -41,20 +41,14 @@ class VideosFragment : Fragment() {
     private val filteredVideos = mutableListOf<Video>()
     private lateinit var adapter: VideosAdapter
     
-    // Fix csatorna URL
-    private val CHANNEL_URL = "https://www.youtube.com/@HOCTvChannel"
-    
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
-        return inflater.inflate(R.layout.fragment_videos, container, false)
-    }
+    ): View? = inflater.inflate(R.layout.fragment_videos, container, false)
     
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        
         recyclerView = view.findViewById(R.id.recyclerView)
         swipeRefresh = view.findViewById(R.id.swipeRefresh)
         progressBar = view.findViewById(R.id.progressBar)
@@ -64,13 +58,13 @@ class VideosFragment : Fragment() {
         setupRecyclerView()
         setupSearch()
         setupSwipeRefresh()
-        
         loadVideos()
     }
     
     private fun setupRecyclerView() {
+        // Átalakított adapter hívás a videó linkekhez
         adapter = VideosAdapter(filteredVideos) { video ->
-            openVideo(video)
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(video.link)))
         }
         recyclerView.layoutManager = LinearLayoutManager(context)
         recyclerView.adapter = adapter
@@ -78,21 +72,16 @@ class VideosFragment : Fragment() {
     
     private fun setupSearch() {
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean {
-                return false
-            }
-            
-            override fun onQueryTextChange(newText: String?): Boolean {
-                filterVideos(newText ?: "")
+            override fun onQueryTextSubmit(p0: String?): Boolean = false
+            override fun onQueryTextChange(query: String?): Boolean {
+                filterVideos(query ?: "")
                 return true
             }
         })
     }
     
     private fun setupSwipeRefresh() {
-        swipeRefresh.setOnRefreshListener {
-            loadVideos()
-        }
+        swipeRefresh.setOnRefreshListener { loadVideos() }
     }
     
     private fun filterVideos(query: String) {
@@ -100,71 +89,59 @@ class VideosFragment : Fragment() {
         if (query.isEmpty()) {
             filteredVideos.addAll(videos)
         } else {
-            filteredVideos.addAll(
-                videos.filter {
-                    it.title.contains(query, ignoreCase = true)
-                }
-            )
+            filteredVideos.addAll(videos.filter { it.title.contains(query, ignoreCase = true) })
         }
         adapter.notifyDataSetChanged()
     }
     
     private fun loadVideos() {
         showLoading()
-        
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // YouTube scraping kísérlet
-                val document = Jsoup.connect("$CHANNEL_URL/videos")
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                    .get()
+                // A WordPress API-n keresztül kérjük le a videókat (ha van ilyen egyedi poszt típus vagy kategória)
+                // Itt a "videók" kategória vagy modul adatait hívjuk be
+                val url = "https://www.hoc.hu/wp-json/wp/v2/posts?categories=VIDEÓK_KATEGÓRIA_ID&_embed" 
+                // Megjegyzés: Ha tudod a videó kategória ID-ját, írd be a helyére. 
+                // Ha nem tudod, az API az összes posztot visszaadja, amiben videó van.
                 
-                val loadedVideos = mutableListOf<Video>()
-                val scriptElements = document.select("script")
+                val response = URL(url).readText()
+                val jsonArray = JSONArray(response)
+                val loaded = mutableListOf<Video>()
                 
-                for (script in scriptElements) {
-                    val content = script.html()
-                    if (content.contains("\"videoId\"")) {
-                        val videoIdPattern = "\"videoId\":\"([^\"]+)\"".toRegex()
-                        val titlePattern = "\"title\":\\{\"runs\":\\[\\{\"text\":\"([^\"]+)\"".toRegex()
-                        
-                        val ids = videoIdPattern.findAll(content).map { it.groupValues[1] }.toList()
-                        val titles = titlePattern.findAll(content).map { it.groupValues[1] }.toList()
-                        
-                        for (i in 0 until minOf(ids.size, titles.size, 15)) {
-                            loadedVideos.add(Video(ids[i], titles[i], "https://i.ytimg.com/vi/${ids[i]}/hqdefault.jpg", "", "", ""))
-                        }
-                        if (loadedVideos.isNotEmpty()) break
+                for (i in 0 until jsonArray.length()) {
+                    val post = jsonArray.getJSONObject(i)
+                    val title = Html.fromHtml(post.getJSONObject("title").getString("rendered"), Html.FROM_HTML_MODE_LEGACY).toString()
+                    
+                    var thumb = ""
+                    if (post.has("_embedded")) {
+                        val media = post.getJSONObject("_embedded").optJSONArray("wp:featuredmedia")?.getJSONObject(0)
+                        thumb = media?.optString("source_url") ?: ""
                     }
-                }
-                
-                // Ha nem sikerült adatot kinyerni, egy gombot mindenképp adunk
-                if (loadedVideos.isEmpty()) {
-                    loadedVideos.add(Video("channel", "HOC TV Channel megnyitása", "", "", "", ""))
+                    
+                    loaded.add(Video(
+                        id = post.getInt("id").toString(),
+                        title = title,
+                        thumbnail = thumb,
+                        link = post.getString("link")
+                    ))
                 }
                 
                 withContext(Dispatchers.Main) {
                     videos.clear()
-                    videos.addAll(loadedVideos)
+                    videos.addAll(loaded)
                     filterVideos(searchView.query.toString())
                     showContent()
                 }
-                
             } catch (e: Exception) {
+                // Ha az API hiba, visszaugrunk a csatorna linkre
                 withContext(Dispatchers.Main) {
                     videos.clear()
-                    videos.add(Video("channel", "HOC TV Channel - Kattints ide a megnyitáshoz!", "", "", "", ""))
+                    videos.add(Video("1", "HOC TV Csatorna megnyitása", "", "https://www.youtube.com/@HOCTvChannel"))
                     filterVideos("")
                     showContent()
                 }
             }
         }
-    }
-    
-    private fun openVideo(video: Video) {
-        val url = if (video.id == "channel") CHANNEL_URL else "https://www.youtube.com/watch?v=${video.id}"
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        startActivity(intent)
     }
     
     private fun showLoading() {
