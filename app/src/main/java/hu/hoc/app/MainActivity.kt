@@ -28,11 +28,13 @@ class MainActivity : AppCompatActivity() {
         val adapter = MainPagerAdapter(this)
         viewPager.adapter = adapter
         
+        // A fülek elnevezései
         TabLayoutMediator(tabLayout, viewPager) { tab, position ->
             tab.text = when (position) {
-                0 -> getString(R.string.tab_articles)
-                1 -> getString(R.string.tab_coupons)
-                2 -> getString(R.string.tab_videos)
+                0 -> "Hírek"
+                1 -> "Kuponok"
+                2 -> "Videók"
+                3 -> "TikTok"
                 else -> ""
             }
         }.attach()
