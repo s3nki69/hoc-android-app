@@ -16,20 +16,16 @@ class VideosAdapter(
     class VideoViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val thumbnail: ImageView = view.findViewById(R.id.videoThumbnail)
         val title: TextView = view.findViewById(R.id.videoTitle)
-        // A hibás sorokat (duration, views) innen eltávolítottuk
     }
     
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_video, parent, false)
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_video, parent, false)
         return VideoViewHolder(view)
     }
     
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
         val video = videos[position]
-        
         holder.title.text = video.title
-        
         if (video.thumbnail.isNotEmpty()) {
             holder.thumbnail.load(video.thumbnail) {
                 crossfade(true)
@@ -39,10 +35,7 @@ class VideosAdapter(
         } else {
             holder.thumbnail.setImageResource(R.drawable.ic_placeholder)
         }
-        
-        holder.itemView.setOnClickListener {
-            onItemClick(video)
-        }
+        holder.itemView.setOnClickListener { onItemClick(video) }
     }
     
     override fun getItemCount() = videos.size
