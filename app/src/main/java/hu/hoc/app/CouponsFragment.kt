@@ -88,7 +88,7 @@ class CouponsFragment : Fragment() {
             
             override fun onQueryTextChange(newText: String?): Boolean {
                 if (newText.isNullOrEmpty()) {
-                    filterCoupons("")
+                    loadCoupons()
                 }
                 return true
             }
@@ -109,8 +109,7 @@ class CouponsFragment : Fragment() {
             filteredCoupons.addAll(
                 coupons.filter {
                     it.title.contains(query, ignoreCase = true) ||
-                    it.store.contains(query, ignoreCase = true) ||
-                    it.discount.contains(query, ignoreCase = true)
+                    it.store.contains(query, ignoreCase = true)
                 }
             )
         }
@@ -122,56 +121,26 @@ class CouponsFragment : Fragment() {
         
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // Laravel kereső URL kezelése
                 val searchUrl = "https://kupon.hoc.hu/?search=${Uri.encode(query)}"
                 val document = Jsoup.connect(searchUrl)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                    .timeout(10000)
+                    .userAgent("Mozilla/5.0")
                     .get()
                 
-                val loadedCoupons = mutableListOf<Coupon>()
-                // Kibővített keresés a Laravel alapú oldalhoz
-                val items = document.select("article, .deal-item, .coupon-item, .product-item, .card")
-                
-                items.forEach { item ->
-                    try {
-                        val title = item.select("h1, h2, h3, .title, .product-title").text()
-                        val store = item.select(".store, .shop-name, .vendor").text().ifEmpty { 
-                            item.select("a[href*=store]").text().ifEmpty { "HOC" }
-                        }
-                        val code = item.select(".coupon-code, code, .code, b, strong").text().ifEmpty { "Nincs kód" }
-                        val discount = item.select(".discount, .price, .deal-price, .badge").text().ifEmpty { "-" }
-                        val link = item.select("a[href]").attr("abs:href")
-                        
-                        if (title.isNotEmpty() && link.isNotEmpty()) {
-                            loadedCoupons.add(
-                                Coupon(
-                                    title = title,
-                                    store = store,
-                                    code = code,
-                                    discount = discount,
-                                    link = link
-                                )
-                            )
-                        }
-                    } catch (e: Exception) {
-                        // Hiba esetén kihagyjuk az adott elemet
-                    }
-                }
+                val loadedCoupons = parseCoupons(document)
                 
                 withContext(Dispatchers.Main) {
                     coupons.clear()
                     coupons.addAll(loadedCoupons)
                     filterCoupons("")
                     showContent()
-                    
                     if (loadedCoupons.isEmpty()) {
-                        Toast.makeText(context, "Nincs találat", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Nincs találat a kuponok között", Toast.LENGTH_SHORT).show()
                     }
                 }
-                
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    showError("Hálózati hiba: ${e.message}")
+                    showError(e.message ?: "Hiba a keresés során")
                 }
             }
         }
@@ -179,43 +148,13 @@ class CouponsFragment : Fragment() {
     
     private fun loadCoupons() {
         showLoading()
-        
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val url = "https://kupon.hoc.hu"
-                val document = Jsoup.connect(url)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                    .timeout(10000)
+                val document = Jsoup.connect("https://kupon.hoc.hu")
+                    .userAgent("Mozilla/5.0")
                     .get()
                 
-                val loadedCoupons = mutableListOf<Coupon>()
-                val items = document.select("article, .deal-item, .coupon-item, .product-item, .card")
-                
-                items.take(30).forEach { item ->
-                    try {
-                        val title = item.select("h1, h2, h3, .title, .product-title").text()
-                        val store = item.select(".store, .shop-name, .vendor").text().ifEmpty { 
-                            item.select("a[href*=store]").text().ifEmpty { "HOC" }
-                        }
-                        val code = item.select(".coupon-code, code, .code, b, strong").text().ifEmpty { "Nincs kód" }
-                        val discount = item.select(".discount, .price, .deal-price, .badge").text().ifEmpty { "-" }
-                        val link = item.select("a[href]").attr("abs:href")
-                        
-                        if (title.isNotEmpty() && link.isNotEmpty()) {
-                            loadedCoupons.add(
-                                Coupon(
-                                    title = title,
-                                    store = store,
-                                    code = code,
-                                    discount = discount,
-                                    link = link
-                                )
-                            )
-                        }
-                    } catch (e: Exception) {
-                        // Kihagyás
-                    }
-                }
+                val loadedCoupons = parseCoupons(document)
                 
                 withContext(Dispatchers.Main) {
                     coupons.clear()
@@ -223,25 +162,47 @@ class CouponsFragment : Fragment() {
                     filterCoupons("")
                     showContent()
                 }
-                
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    showError("Nem sikerült a kuponok betöltése: ${e.message}")
+                    showError(e.message ?: "Hiba a letöltéskor")
                 }
             }
         }
+    }
+
+    private fun parseCoupons(document: org.jsoup.nodes.Document): List<Coupon> {
+        val list = mutableListOf<Coupon>()
+        // Rugalmasabb elemkeresés a Laravel struktúrához
+        val items = document.select(".deal-item, .coupon-item, article, .product-card")
+        
+        items.forEach { item ->
+            try {
+                val title = item.select("h2, h3, .title").text()
+                val store = item.select(".store, .shop").text().ifEmpty { "Bolt" }
+                val code = item.select(".coupon-code, code").text().ifEmpty { "Nincs kód" }
+                val discount = item.select(".discount, .price").text().ifEmpty { "-" }
+                val link = item.select("a").first()?.attr("abs:href") ?: ""
+                
+                if (title.isNotEmpty()) {
+                    list.add(Coupon(title, store, code, discount, link))
+                }
+            } catch (e: Exception) { }
+        }
+        return list
     }
     
     private fun copyCouponCode(coupon: Coupon) {
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("Coupon Code", coupon.code)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, getString(R.string.coupon_copied), Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Kód másolva!", Toast.LENGTH_SHORT).show()
     }
     
     private fun openStore(coupon: Coupon) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(coupon.link))
-        startActivity(intent)
+        if (coupon.link.isNotEmpty()) {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(coupon.link))
+            startActivity(intent)
+        }
     }
     
     private fun showLoading() {
@@ -262,7 +223,7 @@ class CouponsFragment : Fragment() {
         progressBar.visibility = View.GONE
         recyclerView.visibility = View.GONE
         errorText.visibility = View.VISIBLE
-        errorText.text = message
+        errorText.text = "Hiba: $message"
         swipeRefresh.isRefreshing = false
     }
 }
