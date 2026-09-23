@@ -37,7 +37,7 @@ class NotificationsFragment : Fragment() {
         saveButton = view.findViewById(R.id.saveTopics)
         saveButton.setOnClickListener { saveTopics() }
         view.findViewById<Button>(R.id.openWebSettings).setOnClickListener {
-            startActivity(Intent(requireContext(), ArticleActivity::class.java).putExtra(ArticleActivity.EXTRA_URL, "https://www.hoc.hu/ertesitesek/"))
+            startActivity(Intent(requireContext(), ArticleActivity::class.java).putExtra(ArticleActivity.EXTRA_URL, "https://hoc.hu/ertesitesek/"))
         }
         loadData()
     }

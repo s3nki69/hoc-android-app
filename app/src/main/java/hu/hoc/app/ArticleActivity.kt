@@ -62,10 +62,10 @@ class ArticleActivity : AppCompatActivity() {
             }
         }
 
-        articleUrl = intent.getStringExtra(EXTRA_URL) ?: intent.dataString ?: "https://www.hoc.hu/"
+        articleUrl = HocUrls.normalize(intent.getStringExtra(EXTRA_URL) ?: intent.dataString ?: HocUrls.SITE + "/")
         postId = intent.getIntExtra(EXTRA_POST_ID, 0)
         webView.loadUrl(articleUrl)
-        if (postId == 0 && articleUrl != "https://www.hoc.hu/") resolvePostId()
+        if (postId == 0 && articleUrl != HocUrls.SITE + "/") resolvePostId()
     }
 
     private fun resolvePostId() {

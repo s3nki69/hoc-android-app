@@ -8,7 +8,7 @@ import java.net.URL
 import java.security.SecureRandom
 
 object NativeApi {
-    private const val BASE = "https://www.hoc.hu/wp-json/hoc-notify/v1/"
+    private const val BASE = HocUrls.API
     private const val PREFS = "hoc_native"
     private const val DEVICE = "device"
     private const val LAST_INBOX = "last_inbox"
@@ -35,7 +35,7 @@ object NativeApi {
         val body = JSONObject().apply {
             put("device", device)
             put("subscription", JSONObject().apply {
-                put("endpoint", "https://www.hoc.hu/?hoc_native_device=$device")
+                put("endpoint", "https://hoc.hu/?hoc_native_device=$device")
                 put("keys", JSONObject())
             })
             put("categories", cats)
@@ -88,7 +88,7 @@ object NativeApi {
         val out = mutableListOf<WatchItem>()
         for (i in 0 until a.length()) {
             val x = a.optJSONObject(i) ?: continue
-            out += WatchItem(x.optInt("id"), x.optInt("post_id"), x.optString("title"), x.optString("url"), x.optString("type"))
+            out += WatchItem(x.optInt("id"), x.optInt("post_id"), x.optString("title"), HocUrls.normalize(x.optString("url")), x.optString("type"))
         }
         return out
     }
@@ -107,8 +107,8 @@ object NativeApi {
                 id = x.optInt("id"),
                 title = x.optString("title"),
                 body = x.optString("body"),
-                url = x.optString("url"),
-                imageUrl = x.optString("image_url")
+                url = HocUrls.normalize(x.optString("url")),
+                imageUrl = HocUrls.normalize(x.optString("image_url"))
             )
         }
         return out
@@ -118,9 +118,9 @@ object NativeApi {
     fun setLastInboxId(context: Context, value: Int) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(LAST_INBOX, value).apply()
 
     fun resolvePostId(url: String): Int {
-        val slug = URL(url).path.trim('/').substringAfterLast('/').trim()
+        val slug = URL(HocUrls.normalize(url)).path.trim('/').substringAfterLast('/').trim()
         if (slug.isBlank()) return 0
-        val conn = URL("https://www.hoc.hu/wp-json/wp/v2/posts?slug=${java.net.URLEncoder.encode(slug, "UTF-8")}&_fields=id").openConnection() as HttpURLConnection
+        val conn = URL("https://hoc.hu/wp-json/wp/v2/posts?slug=${java.net.URLEncoder.encode(slug, "UTF-8")}&_fields=id").openConnection() as HttpURLConnection
         conn.connectTimeout = 8000; conn.readTimeout = 8000
         val raw = conn.inputStream.bufferedReader().use { it.readText() }
         val a = JSONArray(raw)

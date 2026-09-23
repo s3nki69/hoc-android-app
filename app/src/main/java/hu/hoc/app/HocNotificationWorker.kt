@@ -48,7 +48,7 @@ class HocNotificationWorker(appContext: Context, params: androidx.work.WorkerPar
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val target = Intent(context, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
-            data = Uri.parse(item.url.ifBlank { "https://www.hoc.hu/" })
+            data = Uri.parse(HocUrls.normalize(item.url).ifBlank { HocUrls.SITE + "/" })
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pi = PendingIntent.getActivity(context, item.id, target, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)

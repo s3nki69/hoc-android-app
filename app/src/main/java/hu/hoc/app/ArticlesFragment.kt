@@ -157,7 +157,7 @@ class ArticlesFragment : Fragment() {
     }
 
     private fun fetchPage(page: Int): List<Article> {
-        val endpoint = "https://www.hoc.hu/wp-json/wp/v2/posts?per_page=$pageSize&page=$page&_embed=wp:featuredmedia"
+        val endpoint = "https://hoc.hu/wp-json/wp/v2/posts?per_page=$pageSize&page=$page&_embed=wp:featuredmedia"
         val conn = URL(endpoint).openConnection() as HttpURLConnection
         conn.connectTimeout = 8000
         conn.readTimeout = 10000
@@ -178,7 +178,7 @@ class ArticlesFragment : Fragment() {
         val title = decodeHtml(post.getJSONObject("title").optString("rendered"))
         val excerpt = decodeHtml(post.getJSONObject("excerpt").optString("rendered"))
             .replace(Regex("\\s+"), " ").trim()
-        val link = post.optString("link")
+        val link = HocUrls.normalize(post.optString("link"))
         val date = post.optString("date").take(10)
         var imageUrl: String? = null
 
@@ -194,7 +194,7 @@ class ArticlesFragment : Fragment() {
             }
         }
 
-        return Article(post.getInt("id"), title, excerpt, link, imageUrl, date)
+        return Article(post.getInt("id"), title, excerpt, link, HocUrls.normalize(imageUrl).takeIf { it.isNotBlank() }, date)
     }
 
     @Suppress("DEPRECATION")

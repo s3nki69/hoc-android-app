@@ -38,10 +38,13 @@ class CouponsFragment : Fragment() {
     private lateinit var progressBar: ProgressBar
     private lateinit var errorText: TextView
     private lateinit var searchView: SearchView
+    private lateinit var resultTitle: TextView
 
     private val coupons = mutableListOf<Coupon>()
     private val filteredCoupons = mutableListOf<Coupon>()
     private lateinit var adapter: CouponsAdapter
+
+    private val couponHome = "https://kupon.hoc.hu"
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_coupons, container, false)
@@ -54,18 +57,33 @@ class CouponsFragment : Fragment() {
         progressBar = view.findViewById(R.id.progressBar)
         errorText = view.findViewById(R.id.errorText)
         searchView = view.findViewById(R.id.searchView)
+        resultTitle = view.findViewById(R.id.resultTitle)
 
         adapter = CouponsAdapter(filteredCoupons, ::copyCouponCode, ::openStore)
         recyclerView.layoutManager = LinearLayoutManager(context)
         recyclerView.adapter = adapter
 
+        view.findViewById<View>(R.id.storeAll).setOnClickListener { openCouponPage(couponHome) }
+        view.findViewById<View>(R.id.storeVevor).setOnClickListener { openCouponPage("$couponHome/kategoria/vevor") }
+        view.findViewById<View>(R.id.storeAllegro).setOnClickListener { openCouponPage("$couponHome/kategoria/allegro") }
+        view.findViewById<View>(R.id.storeAliexpress).setOnClickListener { openCouponPage("$couponHome/kategoria/aliexpress") }
+        view.findViewById<View>(R.id.storeBanggood).setOnClickListener { openCouponPage("$couponHome/kategoria/banggood") }
+        view.findViewById<View>(R.id.storeGeekbuying).setOnClickListener { openCouponPage("$couponHome/kategoria/geekbuying") }
+
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
-                if (!query.isNullOrBlank()) searchCoupons(query)
+                if (!query.isNullOrBlank()) {
+                    resultTitle.text = "Találatok: \"$query\""
+                    searchCoupons(query)
+                    searchView.clearFocus()
+                }
                 return true
             }
             override fun onQueryTextChange(newText: String?): Boolean {
-                if (newText.isNullOrBlank()) filterCoupons("")
+                if (newText.isNullOrBlank()) {
+                    resultTitle.text = "Legfrissebb kuponok"
+                    filterCoupons("")
+                }
                 return true
             }
         })
@@ -89,16 +107,16 @@ class CouponsFragment : Fragment() {
         adapter.notifyDataSetChanged()
     }
 
-    private fun searchCoupons(query: String) = fetchCoupons("https://kupon.hoc.hu/?search=${Uri.encode(query)}", cache = false)
+    private fun searchCoupons(query: String) = fetchCoupons("$couponHome/?search=${Uri.encode(query)}", cache = false)
 
-    private fun loadCoupons(showSpinner: Boolean) = fetchCoupons("https://kupon.hoc.hu", cache = true, showSpinner = showSpinner)
+    private fun loadCoupons(showSpinner: Boolean) = fetchCoupons(couponHome, cache = true, showSpinner = showSpinner)
 
     private fun fetchCoupons(url: String, cache: Boolean, showSpinner: Boolean = true) {
         if (showSpinner) showLoading()
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val loaded = withContext(Dispatchers.IO) {
-                    val document = Jsoup.connect(url).userAgent("HOC-Android/2.0").timeout(10000).get()
+                    val document = Jsoup.connect(url).userAgent("HOC-Android/2.0.4").timeout(10000).get()
                     document.select(".deal-item, .coupon-item, article, .product-item").take(if (cache) 20 else 50).mapNotNull { item ->
                         val title = item.select("h2, h3, .title, .product-title").text()
                         val store = item.select(".store, .shop-name").text().ifEmpty { item.select("a[href*=store]").text().ifEmpty { "N/A" } }
@@ -112,7 +130,10 @@ class CouponsFragment : Fragment() {
                 if (cache) CacheStore.saveCoupons(requireContext(), loaded)
                 filterCoupons("")
                 showContent()
-                if (loaded.isEmpty()) Toast.makeText(context, "Nincs találat", Toast.LENGTH_SHORT).show()
+                if (loaded.isEmpty()) {
+                    errorText.visibility = View.VISIBLE
+                    errorText.text = "Nem találtam helyben megjeleníthető kuponokat. A kereső és az áruházi gyorsgombok továbbra is használhatók."
+                }
             } catch (e: Exception) {
                 if (coupons.isEmpty()) showError(e.message ?: "Ismeretlen hiba")
                 else Toast.makeText(context, "A kuponok frissítése most nem sikerült", Toast.LENGTH_SHORT).show()
@@ -128,8 +149,11 @@ class CouponsFragment : Fragment() {
         Toast.makeText(context, getString(R.string.coupon_copied), Toast.LENGTH_SHORT).show()
     }
 
-    private fun openStore(coupon: Coupon) {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(coupon.link)))
+    private fun openStore(coupon: Coupon) = openCouponPage(coupon.link)
+
+    private fun openCouponPage(url: String) {
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { Toast.makeText(context, "A hivatkozás nem nyitható meg", Toast.LENGTH_SHORT).show() }
     }
 
     private fun showLoading() {
