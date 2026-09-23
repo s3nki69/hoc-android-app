@@ -11,8 +11,8 @@ android {
         applicationId = "hu.hoc.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 6
-        versionName = "2.0.4"
+        versionCode = 8
+        versionName = "2.0.6"
     }
 
     buildTypes {
@@ -60,12 +60,16 @@ dependencies {
     
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
     
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     
+    // Firebase Cloud Messaging – a Firebase-konfigurációt a HOC szerverről kapja az app.
+    implementation("com.google.firebase:firebase-messaging:24.1.2")
+
     // WebView
     implementation("androidx.webkit:webkit:1.9.0")
     

@@ -16,8 +16,8 @@ import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit
 
 class HocNotificationWorker(appContext: Context, params: androidx.work.WorkerParameters) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        if (!NativeApi.isPushEnabled(applicationContext)) return@withContext Result.success()
         try {
             NativeApi.ensureRegistered(applicationContext)
             val items = NativeApi.inbox(applicationContext)
@@ -33,9 +34,6 @@ class HocNotificationWorker(appContext: Context, params: androidx.work.WorkerPar
             val maxId = items.maxOf { it.id }
             val lastId = NativeApi.lastInboxId(applicationContext)
             createChannel(applicationContext)
-            // Új natív eszközhöz a szerver nem rendel korábbi inbox-elemeket, ezért
-            // az első megjelenő üzenetet sem szabad elnyelni. Frissítés után legfeljebb
-            // a hat legújabb értesítést mutatjuk meg.
             items.filter { it.id > lastId }.sortedBy { it.id }.takeLast(6).forEach { showNotification(applicationContext, it) }
             NativeApi.setLastInboxId(applicationContext, maxId)
             Result.success()
@@ -49,6 +47,7 @@ class HocNotificationWorker(appContext: Context, params: androidx.work.WorkerPar
         val target = Intent(context, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
             data = Uri.parse(HocUrls.normalize(item.url).ifBlank { HocUrls.SITE + "/" })
+            putExtra(MainActivity.EXTRA_INBOX_ID, item.id)
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pi = PendingIntent.getActivity(context, item.id, target, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -65,18 +64,32 @@ class HocNotificationWorker(appContext: Context, params: androidx.work.WorkerPar
     }
 
     companion object {
-        private const val CHANNEL_ID = "hoc_updates"
+        const val CHANNEL_ID = "hoc_updates"
         private const val WORK_NAME = "hoc_notifications_sync"
 
-        fun schedule(context: Context) {
+        fun schedule(context: Context, fcmReady: Boolean = false) {
+            if (!NativeApi.isPushEnabled(context)) {
+                cancel(context)
+                return
+            }
             val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-            val request = PeriodicWorkRequestBuilder<HocNotificationWorker>(15, TimeUnit.MINUTES)
-                .setConstraints(constraints)
-                .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
+            val intervalHours = if (fcmReady) 6L else 0L
+            val request = if (fcmReady) {
+                PeriodicWorkRequestBuilder<HocNotificationWorker>(intervalHours, TimeUnit.HOURS)
+                    .setConstraints(constraints).build()
+            } else {
+                PeriodicWorkRequestBuilder<HocNotificationWorker>(15, TimeUnit.MINUTES)
+                    .setConstraints(constraints).build()
+            }
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+        }
+
+        fun cancel(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
         }
 
         fun runNow(context: Context) {
+            if (!NativeApi.isPushEnabled(context)) return
             val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
             WorkManager.getInstance(context).enqueue(
                 OneTimeWorkRequestBuilder<HocNotificationWorker>().setConstraints(constraints).build()

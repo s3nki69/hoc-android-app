@@ -52,7 +52,8 @@ class MainActivity : AppCompatActivity() {
                 0 -> getString(R.string.tab_articles)
                 1 -> getString(R.string.tab_coupons)
                 2 -> getString(R.string.tab_videos)
-                3 -> getString(R.string.tab_notifications)
+                3 -> getString(R.string.tab_tiktok)
+                4 -> getString(R.string.tab_notifications)
                 else -> ""
             }
         }.attach()
@@ -60,15 +61,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupNativeNotifications() {
         HocNotificationWorker.createChannel(this)
-        HocNotificationWorker.schedule(this)
+        if (!NativeApi.isPushEnabled(this)) {
+            HocNotificationWorker.cancel(this)
+            return
+        }
+        HocNotificationWorker.schedule(this, fcmReady = false)
         HocNotificationWorker.runNow(this)
-        lifecycleScope.launch(Dispatchers.IO) { runCatching { NativeApi.ensureRegistered(this@MainActivity) } }
+        lifecycleScope.launch {
+            try { HocFirebase.refreshAndRegister(this@MainActivity) } catch (_: Exception) { }
+        }
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
     private fun handleIncomingLink(sourceIntent: Intent?) {
+        val inboxId = sourceIntent?.getIntExtra(EXTRA_INBOX_ID, 0) ?: 0
+        if (inboxId > 0) lifecycleScope.launch(Dispatchers.IO) { runCatching { NativeApi.markRead(this@MainActivity, inboxId) } }
         if (sourceIntent?.action != Intent.ACTION_VIEW) return
         val uri: Uri = sourceIntent.data ?: return
         val host = uri.host.orEmpty().lowercase()
@@ -78,5 +87,9 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this, ArticleActivity::class.java).putExtra(ArticleActivity.EXTRA_URL, uri.toString()))
             }
         }
+    }
+
+    companion object {
+        const val EXTRA_INBOX_ID = "hoc_inbox_id"
     }
 }

@@ -1,6 +1,8 @@
 package hu.hoc.app
 
-import android.graphics.Bitmap
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -10,103 +12,123 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.ProgressBar
 import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 
 class TikTokFragment : Fragment() {
-
     private lateinit var webView: WebView
-    private lateinit var progressBar: ProgressBar
-
-    private val TIKTOK_URL = "https://www.tiktok.com/@hoc.hu"
+    private lateinit var backCallback: OnBackPressedCallback
 
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
-        return inflater.inflate(R.layout.fragment_tiktok, container, false)
-    }
+    ): View = inflater.inflate(R.layout.fragment_tiktok, container, false)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         webView = view.findViewById(R.id.tiktokWebView)
-        progressBar = view.findViewById(R.id.progressBar)
-
         setupWebView()
 
-        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, object : OnBackPressedCallback(true) {
+        backCallback = object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
                 if (webView.canGoBack()) {
                     webView.goBack()
                 } else {
                     isEnabled = false
-                    requireActivity().onBackPressed()
+                    requireActivity().onBackPressedDispatcher.onBackPressed()
                 }
             }
-        })
+        }
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backCallback)
 
-        webView.loadUrl(TIKTOK_URL)
+        if (savedInstanceState == null) {
+            webView.loadUrl(TIKTOK_URL)
+        } else {
+            webView.restoreState(savedInstanceState)
+        }
     }
 
     private fun setupWebView() {
-        val webSettings: WebSettings = webView.settings
-        
-        webSettings.javaScriptEnabled = true
-        webSettings.domStorageEnabled = true
-        
-        // JAVÍTÁS: Jobb illeszkedés a képernyőhöz
-        webSettings.loadWithOverviewMode = true
-        webSettings.useWideViewPort = true
-        webSettings.setSupportZoom(true)
-        webSettings.builtInZoomControls = true
-        webSettings.displayZoomControls = false
-
-        webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-        webSettings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.setAcceptCookie(true)
-        cookieManager.setAcceptThirdPartyCookies(webView, true)
-
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                return false
-            }
-
-            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                progressBar.visibility = View.VISIBLE
-            }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                progressBar.visibility = View.GONE
-                
-                // JAVÍTÁS: Drasztikusabb GDPR banner eltávolítás
-                // Ez a szkript megkeresi a gyakori TikTok banner elemeket és elrejti őket
-                webView.evaluateJavascript(
-                    """
-                    (function() {
-                        var css = 'div[class*="cookie-banner"], div[class*="CookieBanner"], #tiktok-cookie-banner { display: none !important; }';
-                        var head = document.head || document.getElementsByTagName('head')[0];
-                        var style = document.createElement('style');
-                        style.type = 'text/css';
-                        style.appendChild(document.createTextNode(css));
-                        head.appendChild(style);
-                        
-                        // Azonnali kényszerített eltávolítás az ismert osztályokra
-                        var banners = document.querySelectorAll('div[class*="cookie-banner"], div[class*="CookieBanner"]');
-                        for (var i = 0; i < banners.length; i++) {
-                            banners[i].style.setProperty('display', 'none', 'important');
-                        }
-                    })()
-                    """.trimIndent(), 
-                    null
-                )
+        with(webView.settings) {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            loadWithOverviewMode = true
+            useWideViewPort = true
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
+            cacheMode = WebSettings.LOAD_DEFAULT
+            userAgentString = MOBILE_USER_AGENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             }
         }
+
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                setAcceptThirdPartyCookies(webView, true)
+            }
+        }
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                return handleUrl(request.url)
+            }
+
+            @Suppress("DEPRECATION")
+            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                return handleUrl(Uri.parse(url))
+            }
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                super.onPageFinished(view, url)
+                backCallback.isEnabled = view.canGoBack()
+                hideCookieBanner(view)
+            }
+        }
+    }
+
+    private fun handleUrl(uri: Uri): Boolean {
+        val host = uri.host.orEmpty().lowercase()
+        if (host == "tiktok.com" || host.endsWith(".tiktok.com")) return false
+        return runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun hideCookieBanner(view: WebView) {
+        val script = """
+            (function() {
+                var css = 'div[class*="cookie-banner"], div[class*="CookieBanner"], #tiktok-cookie-banner { display: none !important; }';
+                var head = document.head || document.getElementsByTagName('head')[0];
+                if (!head || document.getElementById('hoc-tiktok-style')) return;
+                var style = document.createElement('style');
+                style.id = 'hoc-tiktok-style';
+                style.type = 'text/css';
+                style.appendChild(document.createTextNode(css));
+                head.appendChild(style);
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script, null)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        if (::webView.isInitialized) webView.saveState(outState)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onDestroyView() {
+        if (::webView.isInitialized) webView.stopLoading()
+        super.onDestroyView()
+    }
+
+    companion object {
+        private const val TIKTOK_URL = "https://www.tiktok.com/@hoc.hu"
+        private const val MOBILE_USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     }
 }

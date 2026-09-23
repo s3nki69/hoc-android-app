@@ -12,10 +12,31 @@ object NativeApi {
     private const val PREFS = "hoc_native"
     private const val DEVICE = "device"
     private const val LAST_INBOX = "last_inbox"
+    private const val PUSH_ENABLED = "push_enabled"
 
     data class Topic(val id: Int, val name: String)
-    data class InboxItem(val id: Int, val title: String, val body: String, val url: String, val imageUrl: String)
+    data class InboxItem(
+        val id: Int,
+        val title: String,
+        val body: String,
+        val url: String,
+        val imageUrl: String,
+        val read: Boolean,
+        val createdAt: String,
+        val type: String
+    )
     data class WatchItem(val id: Int, val postId: Int, val title: String, val url: String, val type: String)
+    data class FcmConfig(
+        val enabled: Boolean,
+        val projectId: String,
+        val projectNumber: String,
+        val appId: String,
+        val apiKey: String
+    ) {
+        val ready: Boolean get() = enabled && projectId.isNotBlank() && projectNumber.isNotBlank() && appId.isNotBlank() && apiKey.isNotBlank()
+    }
+    data class AppConfig(val topics: List<Topic>, val fcm: FcmConfig, val pollMinutes: Int)
+    data class Status(val active: Boolean, val categories: List<Int>, val transport: String, val fcmRegistered: Boolean)
 
     fun deviceId(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -26,9 +47,13 @@ object NativeApi {
         return id
     }
 
+    fun isPushEnabled(context: Context): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(PUSH_ENABLED, true)
+    fun setPushEnabled(context: Context, enabled: Boolean) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(PUSH_ENABLED, enabled).apply()
+
     fun ensureRegistered(context: Context, categories: List<Int>? = null): Boolean {
+        if (!isPushEnabled(context)) return false
         if (categories == null) {
-            runCatching { if (status(context).first) return true }
+            runCatching { if (status(context).active) return true }
         }
         val device = deviceId(context)
         val cats = JSONArray(categories ?: emptyList<Int>())
@@ -40,27 +65,65 @@ object NativeApi {
             })
             put("categories", cats)
             put("source_url", "android-app")
+            put("transport", "native_poll")
         }
         return post("subscribe", body).optBoolean("ok", false)
     }
 
-    fun status(context: Context): Pair<Boolean, List<Int>> {
+    fun registerFcmToken(context: Context, token: String): Boolean {
+        if (!isPushEnabled(context) || token.isBlank()) return false
+        val current = runCatching { status(context) }.getOrNull()
+        val cats = current?.categories ?: emptyList()
+        val device = deviceId(context)
+        val body = JSONObject().apply {
+            put("device", device)
+            put("subscription", JSONObject().apply {
+                put("endpoint", "https://hoc.hu/?hoc_native_device=$device")
+                put("keys", JSONObject())
+            })
+            put("categories", JSONArray(cats))
+            put("source_url", "android-app")
+            put("transport", "fcm")
+            put("fcm_token", token)
+        }
+        return post("subscribe", body).optBoolean("ok", false)
+    }
+
+    fun unsubscribe(context: Context): Boolean {
+        val o = post("unsubscribe", JSONObject().apply { put("device", deviceId(context)) })
+        return o.optBoolean("ok", false)
+    }
+
+    fun status(context: Context): Status {
         val o = get("status?device=${deviceId(context)}")
         val a = o.optJSONArray("categories") ?: JSONArray()
         val out = mutableListOf<Int>()
         for (i in 0 until a.length()) out += a.optInt(i)
-        return o.optBoolean("active", false) to out
+        return Status(
+            active = o.optBoolean("active", false),
+            categories = out,
+            transport = o.optString("transport", "native_poll"),
+            fcmRegistered = o.optBoolean("fcm_registered", false)
+        )
     }
 
-    fun appConfig(): List<Topic> {
+    fun appConfig(): AppConfig {
         val o = get("app-config")
         val a = o.optJSONArray("categories") ?: JSONArray()
-        val out = mutableListOf<Topic>()
+        val topics = mutableListOf<Topic>()
         for (i in 0 until a.length()) {
             val x = a.optJSONObject(i) ?: continue
-            out += Topic(x.optInt("id"), x.optString("name"))
+            topics += Topic(x.optInt("id"), x.optString("name"))
         }
-        return out
+        val f = o.optJSONObject("fcm") ?: JSONObject()
+        val fcm = FcmConfig(
+            enabled = f.optBoolean("enabled", false),
+            projectId = f.optString("project_id"),
+            projectNumber = f.optString("project_number"),
+            appId = f.optString("app_id"),
+            apiKey = f.optString("api_key")
+        )
+        return AppConfig(topics, fcm, o.optInt("native_poll_minutes", 15).coerceAtLeast(15))
     }
 
     fun saveCategories(context: Context, categories: List<Int>): Boolean {
@@ -80,7 +143,6 @@ object NativeApi {
         }
         return post("watch", body).optBoolean("ok", false)
     }
-
 
     fun watchlist(context: Context): List<WatchItem> {
         val o = get("watchlist?device=${deviceId(context)}")
@@ -108,10 +170,18 @@ object NativeApi {
                 title = x.optString("title"),
                 body = x.optString("body"),
                 url = HocUrls.normalize(x.optString("url")),
-                imageUrl = HocUrls.normalize(x.optString("image_url"))
+                imageUrl = HocUrls.normalize(x.optString("image_url")),
+                read = x.optBoolean("read", false),
+                createdAt = x.optString("created_at"),
+                type = x.optString("type")
             )
         }
         return out
+    }
+
+    fun markRead(context: Context, inboxId: Int): Boolean {
+        if (inboxId <= 0) return false
+        return post("read", JSONObject().apply { put("device", deviceId(context)); put("inbox_id", inboxId) }).optBoolean("ok", false)
     }
 
     fun lastInboxId(context: Context): Int = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(LAST_INBOX, 0)
@@ -131,10 +201,10 @@ object NativeApi {
         val conn = URL(BASE + path).openConnection() as HttpURLConnection
         conn.connectTimeout = 8000; conn.readTimeout = 10000
         conn.setRequestProperty("Accept", "application/json")
-        conn.setRequestProperty("User-Agent", "HOC-Android/2.0")
+        conn.setRequestProperty("User-Agent", "HOC-Android/2.0.6")
         val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
         val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (conn.responseCode !in 200..299) throw IllegalStateException(JSONObject(raw).optString("message", "HTTP ${conn.responseCode}"))
+        if (conn.responseCode !in 200..299) throw IllegalStateException(runCatching { JSONObject(raw).optString("message") }.getOrNull().orEmpty().ifBlank { "HTTP ${conn.responseCode}" })
         return JSONObject(raw)
     }
 
@@ -145,7 +215,7 @@ object NativeApi {
         conn.connectTimeout = 8000; conn.readTimeout = 10000
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         conn.setRequestProperty("Accept", "application/json")
-        conn.setRequestProperty("User-Agent", "HOC-Android/2.0")
+        conn.setRequestProperty("User-Agent", "HOC-Android/2.0.6")
         conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
         val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
         val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
