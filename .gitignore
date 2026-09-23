@@ -1,0 +1,14 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Signing keys - NEVER commit production keys
+*.jks
+*.keystore
