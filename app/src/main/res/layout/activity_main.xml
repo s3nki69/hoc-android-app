@@ -15,14 +15,24 @@
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="@color/hoc_blue"
-            app:title="@string/app_name"
-            app:titleTextColor="@color/white" />
+            app:contentInsetStart="12dp"
+            app:contentInsetEnd="12dp">
+
+            <ImageView
+                android:layout_width="96dp"
+                android:layout_height="48dp"
+                android:scaleType="centerInside"
+                android:src="@mipmap/ic_launcher"
+                android:contentDescription="HOC.hu" />
+        </androidx.appcompat.widget.Toolbar>
 
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tabLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@color/hoc_blue"
+            app:tabMode="fixed"
+            app:tabGravity="fill"
             app:tabTextColor="@color/white"
             app:tabSelectedTextColor="@color/white"
             app:tabIndicatorColor="@color/hoc_orange" />

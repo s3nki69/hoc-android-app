@@ -1,19 +1,29 @@
 package hu.hoc.app
 
-import android.graphics.Bitmap
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.ProgressBar
-import androidx.activity.OnBackPressedCallback
+import android.widget.SearchView
+import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.jsoup.Jsoup
 
-// Adatmodell megtartása a kompatibilitás miatt
+
 data class Coupon(
     val title: String,
     val store: String,
@@ -23,74 +33,121 @@ data class Coupon(
 )
 
 class CouponsFragment : Fragment() {
-
-    private lateinit var webView: WebView
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var progressBar: ProgressBar
+    private lateinit var errorText: TextView
+    private lateinit var searchView: SearchView
 
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View? {
+    private val coupons = mutableListOf<Coupon>()
+    private val filteredCoupons = mutableListOf<Coupon>()
+    private lateinit var adapter: CouponsAdapter
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_coupons, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
-        webView = view.findViewById(R.id.couponWebView)
+        recyclerView = view.findViewById(R.id.recyclerView)
+        swipeRefresh = view.findViewById(R.id.swipeRefresh)
         progressBar = view.findViewById(R.id.progressBar)
+        errorText = view.findViewById(R.id.errorText)
+        searchView = view.findViewById(R.id.searchView)
 
-        setupWebView()
+        adapter = CouponsAdapter(filteredCoupons, ::copyCouponCode, ::openStore)
+        recyclerView.layoutManager = LinearLayoutManager(context)
+        recyclerView.adapter = adapter
 
-        // Vissza gomb kezelése: ha már böngészel, ne lépjen ki, hanem menjen vissza
-        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (webView.canGoBack()) {
-                    webView.goBack()
-                } else {
-                    // Ha a helyi kezdőlapon vagyunk és vissza nyomunk, akkor engedjük át a vezérlést (kilépés/főmenü)
-                    isEnabled = false
-                    requireActivity().onBackPressed()
-                }
+        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?): Boolean {
+                if (!query.isNullOrBlank()) searchCoupons(query)
+                return true
+            }
+            override fun onQueryTextChange(newText: String?): Boolean {
+                if (newText.isNullOrBlank()) filterCoupons("")
+                return true
             }
         })
+        swipeRefresh.setOnRefreshListener { loadCoupons(showSpinner = false) }
 
-        // ITT A VÁLTOZÁS: Nem az internetes URL-t töltjük be, hanem a helyi fájlt
-        // Ez azonnal meg fog jelenni internetkapcsolat nélkül is
-        webView.loadUrl("file:///android_asset/coupon_landing.html")
+        val cached = CacheStore.loadCoupons(requireContext())
+        if (cached.isNotEmpty()) {
+            coupons.addAll(cached)
+            filterCoupons("")
+            showContent()
+        }
+        loadCoupons(showSpinner = cached.isEmpty())
     }
 
-    private fun setupWebView() {
-        val webSettings: WebSettings = webView.settings
-        webSettings.javaScriptEnabled = true
-        webSettings.domStorageEnabled = true
-        webSettings.loadWithOverviewMode = true
-        webSettings.useWideViewPort = true
-        webSettings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-        
-        // Gyorsítótár bekapcsolása a későbbi betöltésekhez
-        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
+    private fun filterCoupons(query: String) {
+        filteredCoupons.clear()
+        if (query.isBlank()) filteredCoupons.addAll(coupons)
+        else filteredCoupons.addAll(coupons.filter {
+            it.title.contains(query, true) || it.store.contains(query, true) || it.discount.contains(query, true)
+        })
+        adapter.notifyDataSetChanged()
+    }
 
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                // False-t adunk vissza, így minden linket (és a keresés eredményét) 
-                // a WebView-n belül nyit meg, nem dob ki a Chrome-ba.
-                return false
-            }
+    private fun searchCoupons(query: String) = fetchCoupons("https://kupon.hoc.hu/?search=${Uri.encode(query)}", cache = false)
 
-            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                // Csak akkor mutatunk töltést, ha nem a helyi fájlt töltjük
-                if (url != null && !url.contains("file:///android_asset")) {
-                    progressBar.visibility = View.VISIBLE
+    private fun loadCoupons(showSpinner: Boolean) = fetchCoupons("https://kupon.hoc.hu", cache = true, showSpinner = showSpinner)
+
+    private fun fetchCoupons(url: String, cache: Boolean, showSpinner: Boolean = true) {
+        if (showSpinner) showLoading()
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val loaded = withContext(Dispatchers.IO) {
+                    val document = Jsoup.connect(url).userAgent("HOC-Android/2.0").timeout(10000).get()
+                    document.select(".deal-item, .coupon-item, article, .product-item").take(if (cache) 20 else 50).mapNotNull { item ->
+                        val title = item.select("h2, h3, .title, .product-title").text()
+                        val store = item.select(".store, .shop-name").text().ifEmpty { item.select("a[href*=store]").text().ifEmpty { "N/A" } }
+                        val code = item.select(".coupon-code, code, .code").text().ifEmpty { "N/A" }
+                        val discount = item.select(".discount, .price, .deal-price").text().ifEmpty { "-" }
+                        val link = item.select("a").attr("abs:href")
+                        if (title.isNotBlank() && link.isNotBlank()) Coupon(title, store, code, discount, link) else null
+                    }
                 }
-            }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                progressBar.visibility = View.GONE
+                coupons.clear(); coupons.addAll(loaded)
+                if (cache) CacheStore.saveCoupons(requireContext(), loaded)
+                filterCoupons("")
+                showContent()
+                if (loaded.isEmpty()) Toast.makeText(context, "Nincs találat", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                if (coupons.isEmpty()) showError(e.message ?: "Ismeretlen hiba")
+                else Toast.makeText(context, "A kuponok frissítése most nem sikerült", Toast.LENGTH_SHORT).show()
+            } finally {
+                swipeRefresh.isRefreshing = false
             }
         }
+    }
+
+    private fun copyCouponCode(coupon: Coupon) {
+        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Coupon Code", coupon.code))
+        Toast.makeText(context, getString(R.string.coupon_copied), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun openStore(coupon: Coupon) {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(coupon.link)))
+    }
+
+    private fun showLoading() {
+        progressBar.visibility = View.VISIBLE
+        recyclerView.visibility = if (coupons.isEmpty()) View.GONE else View.VISIBLE
+        errorText.visibility = View.GONE
+    }
+
+    private fun showContent() {
+        progressBar.visibility = View.GONE
+        recyclerView.visibility = View.VISIBLE
+        errorText.visibility = View.GONE
+    }
+
+    private fun showError(message: String) {
+        progressBar.visibility = View.GONE
+        recyclerView.visibility = View.GONE
+        errorText.visibility = View.VISIBLE
+        errorText.text = "Hiba: $message"
     }
 }

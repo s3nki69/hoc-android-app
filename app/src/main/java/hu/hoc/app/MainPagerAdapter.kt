@@ -6,7 +6,6 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 
 class MainPagerAdapter(activity: FragmentActivity) : FragmentStateAdapter(activity) {
     
-    // Most már 4 fülünk van
     override fun getItemCount(): Int = 4
     
     override fun createFragment(position: Int): Fragment {
@@ -14,7 +13,7 @@ class MainPagerAdapter(activity: FragmentActivity) : FragmentStateAdapter(activi
             0 -> ArticlesFragment()
             1 -> CouponsFragment()
             2 -> VideosFragment()
-            3 -> TikTokFragment() // Itt az új TikTok fül
+            3 -> NotificationsFragment()
             else -> ArticlesFragment()
         }
     }

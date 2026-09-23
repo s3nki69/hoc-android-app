@@ -15,7 +15,7 @@ Ez a projekt már tartalmazza az automatikus GitHub Actions buildet. A GitHub sz
 
 ### 2. Töltsd fel ezt a projektet
 
-1. Csomagold ki a `hoc-android-app-2.0.1-github.zip` fájlt.
+1. Csomagold ki a `hoc-android-app-2.0.2-github.zip` fájlt.
 2. Nyisd meg benne a `hoc-app` mappát.
 3. A GitHub repositoryban válaszd: **Add file → Upload files**.
 4. Húzd be a `hoc-app` mappa **teljes tartalmát**. Fontos, hogy a `.github` mappa is bekerüljön.
@@ -29,10 +29,10 @@ A feltöltés után a build automatikusan elindul.
 2. Kattints a legutóbbi **HOC Android APK** futásra.
 3. Várd meg, amíg zöld pipa jelenik meg. Az első build általában néhány perc.
 4. Az oldal alján az **Artifacts** résznél kattints erre:
-   `HOC-Android-2.0.1-debug`
+   `HOC-Android-2.0.2-debug`
 5. A GitHub ZIP-ben tölti le az artifactot.
 6. Csomagold ki. Ebben lesz:
-   `HOC-Android-2.0.1-debug.apk`
+   `HOC-Android-2.0.2-debug.apk`
 7. Másold a telefonra és telepítsd.
 
 ## Későbbi verziók

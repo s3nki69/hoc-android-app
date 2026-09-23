@@ -23,7 +23,8 @@ class CouponsAdapter(
     }
     
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CouponViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_coupon, parent, false)
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_coupon, parent, false)
         return CouponViewHolder(view)
     }
     
@@ -35,8 +36,13 @@ class CouponsAdapter(
         holder.code.text = coupon.code
         holder.discount.text = coupon.discount
         
-        holder.copyButton.setOnClickListener { onCopyClick(coupon) }
-        holder.storeButton.setOnClickListener { onStoreClick(coupon) }
+        holder.copyButton.setOnClickListener {
+            onCopyClick(coupon)
+        }
+        
+        holder.storeButton.setOnClickListener {
+            onStoreClick(coupon)
+        }
     }
     
     override fun getItemCount() = coupons.size

@@ -1,16 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HOC</string>
-    <string name="tab_articles">Tesztek</string>
+    <string name="app_name">HOC.hu</string>
+    <string name="tab_articles">Friss</string>
     <string name="tab_coupons">Kuponok</string>
     <string name="tab_videos">Videók</string>
-    <string name="search_hint">Keresés...</string>
+    <string name="tab_notifications">Értesítések</string>
+    <string name="search_hint">Keresés…</string>
     <string name="copy_coupon">Kód másolása</string>
     <string name="open_store">Áruház megnyitása</string>
     <string name="coupon_copied">Kuponkód vágólapra másolva!</string>
-    <string name="loading">Betöltés...</string>
+    <string name="loading">Betöltés…</string>
     <string name="error_loading">Hiba a betöltés során</string>
     <string name="retry">Újra</string>
     <string name="no_results">Nincs találat</string>
     <string name="watch_video">Videó megtekintése</string>
+    <string name="share_article">Cikk megosztása</string>
+    <string name="back">Vissza</string>
 </resources>
